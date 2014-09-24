@@ -3,6 +3,7 @@ require 'json'
 require 'netaddr'
 require 'openssl'
 require 'httparty'
+require 'jekyll'
 
 # possible attacks / things to disallow:
 # * Sending github push events for repos containing nasty code
