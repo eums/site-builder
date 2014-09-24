@@ -102,7 +102,7 @@ def verify(params)
 end
 
 def build(params)
-  if !Dir.isdir(params[:source])
+  if !Dir.exists?(params[:source])
     `git clone #{params[:url]} #{params[:source]}`
   end
 
