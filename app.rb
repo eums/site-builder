@@ -96,7 +96,7 @@ def make_params(data)
 end
 
 def verify(params)
-  if !settings.authorized_accounts.contains?(params[:owner])
+  if !settings.authorized_accounts.include?(params[:owner])
     bad_request "bad owner: #{params[:owner]}"
   end
 end
