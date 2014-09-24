@@ -46,7 +46,7 @@ end
 # shared with GitHub only. This is to prevent anyone other than GitHub
 # initiating builds.
 def check_signature(body)
-  received_signature = request.headers['X-Hub-Signature'] || ''
+  received_signature = request.env['HTTP_X_HUB_SIGNATURE'] || ''
   signature = 'sha1=' + OpenSSL::HMAC.hexdigest(
                 OpenSSL::Digest.new('sha1', settings.github_secret, body))
 
