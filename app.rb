@@ -2,6 +2,7 @@ require 'sinatra'
 require 'json'
 require 'netaddr'
 require 'openssl'
+require 'httparty'
 
 # possible attacks / things to disallow:
 # * Sending github push events for repos containing nasty code
@@ -33,7 +34,8 @@ def main
   post '/publish' do
     body = request.body.read
     check_signature(body)
-    params = parse_data(body)
+    data = parse_data(body)
+    params = make_params(data)
 
     verify(params)
     build(params)
@@ -75,6 +77,24 @@ def parse_data(body)
   end
 end
 
+def make_params(data)
+  base = [settings.working_directory,
+          data[:owner],
+          data[:repo],
+          data[:branch]
+         ].join('/')
+
+  publish_url = settings.publish_urls[data[:branch]] or
+    bad_request("no publishing url configured for branch #{data[:branch]}")
+
+  data.merge({
+    :source => "#{base}/source",
+    :destination => "#{base}/dest",
+    :archive => "#{base}/site.tar.gz",
+    :publish_url => publish_url,
+  })
+end
+
 def verify(params)
   if !settings.authorized_accounts.contains?(data[:owner])
     bad_request "bad owner: #{data[:owner]}"
@@ -82,11 +102,26 @@ def verify(params)
 end
 
 def build(params)
-  # TODO
+  if !Dir.isdir(params[:source])
+    `git clone #{params[:url]} #{params[:source]}`
+  end
+
+  Dir.chdir(params[:source]) do
+    `git checkout #{params[:branch]}`
+    `git pull origin #{params[:branch]}`
+  end
+
+  site = Jekyll::Site.new(
+    Jekyll.configuration(
+      "source" => params[:source],
+      "destination" => params[:destination]))
+  site.process
+
+  `tar -czf #{params[:archive]} -C #{params[:destination]} .`
 end
 
 def publish(params)
-  # TODO
+  HTTParty.post(params[:publish_url], :body => File.read(params[:archive]))
 end
 
 def bad_request(message = 'Bad request')
