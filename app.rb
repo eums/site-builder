@@ -11,29 +11,34 @@ require 'openssl'
 # * Use authenticated web hooks
 # * Use whitelisted github orgs/users
 
-set :host, ENV['HOSTNAME']
-set :github_secret, ENV['GITHUB_SECRET']
-set :authorized_accounts, ENV['AUTHORIZED_ACCOUNTS'].split
-set :working_directory, ENV['WORKING_DIRECTORY']
-# set :publish_urls, JSON.parse(ENV['PUBLISH_URLS'])
-# set :publish_secret, ENV['PUBLISH_SECRET']
+def main
+  set :host, ENV['HOSTNAME']
+  set :secure, to_bool(ENV['SECURE'] || true)
+  set :github_secret, ENV['GITHUB_SECRET']
+  set :authorized_accounts, ENV['AUTHORIZED_ACCOUNTS'].split
+  set :working_directory, ENV['WORKING_DIRECTORY']
+  set :publish_urls, JSON.parse(ENV['PUBLISH_URLS'])
+  set :publish_secret, ENV['PUBLISH_SECRET']
 
-before do
-  require_https
-end
+  if settings.secure
+    before do
+      require_https
+    end
+  end
 
-get '/' do
-  'hello from site-builder'
-end
+  get '/' do
+    'hello from site-builder'
+  end
 
-post '/publish' do
-  body = request.body.read
-  check_signature(body)
-  params = parse_data(body)
+  post '/publish' do
+    body = request.body.read
+    check_signature(body)
+    params = parse_data(body)
 
-  verify(params)
-  build(params)
-  publish(params)
+    verify(params)
+    build(params)
+    publish(params)
+  end
 end
 
 def require_https
@@ -48,7 +53,7 @@ end
 def check_signature(body)
   received_signature = request.env['HTTP_X_HUB_SIGNATURE'] || ''
   signature = 'sha1=' + OpenSSL::HMAC.hexdigest(
-                OpenSSL::Digest.new('sha1', settings.github_secret, body))
+                OpenSSL::Digest.new('sha1'), settings.github_secret, body)
 
   if !Rack::Utils.secure_compare(signature, received_signature)
     bad_request 'signature mismatch'
@@ -88,3 +93,16 @@ def bad_request(message = 'Bad request')
   content_type 'text/plain'
   halt 400, message
 end
+
+def to_bool(x)
+  case x
+  when String
+    if %w(F NO OFF FALSE).include?(x.upcase)
+      false
+    end
+  else
+    !!x
+  end
+end
+
+main
