@@ -1,2 +1,2 @@
 require './app'
-run SiteBuilder
+run Sinatra::Application
