@@ -125,7 +125,10 @@ def publish(params)
   HTTParty.post(
     params[:publish_url],
     :body => File.read(params[:archive]),
-    :headers => { 'Content-Type' => 'application/x-compressed-tar' }})
+    :headers => {
+      'Content-Type' => 'application/x-compressed-tar',
+      'Authorization' => "token #{settings.publish_secret}"
+    })
 end
 
 def bad_request(message = 'Bad request')
