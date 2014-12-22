@@ -44,6 +44,7 @@ def main
     verify(params)
     build(params)
     publish(params)
+    'Published!'
   end
 end
 
