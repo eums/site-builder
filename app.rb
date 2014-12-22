@@ -4,6 +4,9 @@ require 'netaddr'
 require 'openssl'
 require 'httparty'
 require 'jekyll'
+require 'dotenv'
+
+Dotenv.load
 
 # possible attacks / things to disallow:
 # * Sending github push events for repos containing nasty code
@@ -14,13 +17,13 @@ require 'jekyll'
 # * Use whitelisted github orgs/users
 
 def main
-  set :host, ENV['HOSTNAME']
-  set :secure, to_bool(ENV['SECURE'] || true)
-  set :github_secret, ENV['GITHUB_SECRET']
-  set :authorized_accounts, ENV['AUTHORIZED_ACCOUNTS'].split
-  set :working_directory, ENV['WORKING_DIRECTORY']
-  set :publish_urls, JSON.parse(ENV['PUBLISH_URLS'])
-  set :publish_secret, ENV['PUBLISH_SECRET']
+  safe_set :host, ENV['HOSTNAME']
+  safe_set :secure, to_bool(ENV['SECURE'] || true)
+  safe_set :github_secret, ENV['GITHUB_SECRET']
+  safe_set :authorized_accounts, ENV['AUTHORIZED_ACCOUNTS'].split
+  safe_set :working_directory, ENV['WORKING_DIRECTORY']
+  safe_set :publish_urls, JSON.parse(ENV['PUBLISH_URLS'])
+  safe_set :publish_secret, ENV['PUBLISH_SECRET']
 
   if settings.secure
     before do
@@ -42,6 +45,11 @@ def main
     build(params)
     publish(params)
   end
+end
+
+def safe_set(key, value)
+  fail "Configuration missing: #{key}" if value.nil?
+  set key, value
 end
 
 def require_https
