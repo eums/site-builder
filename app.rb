@@ -55,8 +55,7 @@ end
 # initiating builds.
 def check_signature(body)
   received_signature = request.env['HTTP_X_HUB_SIGNATURE'] || ''
-  signature = 'sha1=' + OpenSSL::HMAC.hexdigest(
-                OpenSSL::Digest.new('sha1'), settings.github_secret, body)
+  signature = 'sha1=' + hmac_sha1(settings.github_secret, body)
 
   if !Rack::Utils.secure_compare(signature, received_signature)
     bad_request 'signature mismatch'
@@ -121,13 +120,20 @@ def build(params)
   `tar -czf #{params[:archive]} -C #{params[:destination]} .`
 end
 
+def hmac_sha1(key, data)
+  OpenSSL::HMAC.hexdigest(OpenSSL::Digest.new('sha1'), key, data)
+end
+
 def publish(params)
+  data = File.read(params[:archive])
+  signature = hmac_sha1(settings.publish_secret, data)
+
   HTTParty.post(
     params[:publish_url],
-    :body => File.read(params[:archive]),
+    :body => data,
     :headers => {
       'Content-Type' => 'application/x-compressed-tar',
-      'Authorization' => "token #{settings.publish_secret}"
+      'X-Signature' => signature
     })
 end
 
