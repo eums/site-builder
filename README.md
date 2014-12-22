@@ -37,9 +37,6 @@ staging site at staging.example.com:
     {"master": "https://example.com/cgi-bin/upload-site",
      "staging": "https://staging.example.com/cgi-bin/upload-site"}
 
-**PUBLISH_SECRET**: the secret token used for authenticating the POST request
-on the other end. This will simply be sent in the HTTP headers like this:
-
-    Authorization: token <your secret>
-
-Your 'upload-site' script should verify this token.
+**PUBLISH_SECRET**: the secret key used for authenticating the POST request
+on the other end. An HMAC-SHA1 digest is calculated for the archive, and sent
+in the HTTP header 'X-Signature'. Your 'upload-site' script should verify this digest.
