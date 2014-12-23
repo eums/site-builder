@@ -148,7 +148,7 @@ end
 
 def bad_request(message = 'Bad request')
   content_type 'text/plain'
-  halt 400, message
+  halt 400, message + "\n"
 end
 
 def to_bool(x)
