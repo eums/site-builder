@@ -127,7 +127,21 @@ def build(params)
       "destination" => params[:destination]))
   site.process
 
+  set_modes(params[:destination])
+
   `tar -czf #{params[:archive]} -C #{params[:destination]} .`
+end
+
+# Set the mode of all files in a directory to 0644, and all directories in it
+# to 0755.
+def set_modes(dir)
+  Dir.glob("#{dir}/**/*").each do |path|
+    if File.directory? path
+      File.chmod(0755, path)
+    else
+      File.chmod(0644, path)
+    end
+  end
 end
 
 def hmac_sha1(key, data)
