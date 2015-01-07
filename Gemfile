@@ -8,5 +8,7 @@ gem 'rdiscount'
 gem 'netaddr'
 gem 'httparty'
 gem 'dotenv'
+
 gem 'therubyracer'
 gem 'nokogiri'
+gem 'jekyll-asset-pipeline'
