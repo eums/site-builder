@@ -16,6 +16,32 @@ Dotenv.load
 # * Use authenticated web hooks
 # * Use whitelisted github orgs/users
 
+class State
+  attr_reader(:state, :extra_info)
+
+  private
+  def self.state(name)
+    define_method name do |extra_info|
+      @state = name
+      @extra_info = extra_info
+    end
+  end
+
+  def self.states(*names)
+    names.each do |name|
+      state(name)
+    end
+  end
+end
+
+class ServerState < State
+  states(:idle, :cloning, :building, :uploading)
+
+  def initialize
+    idle(nil)
+  end
+end
+
 def main
   safe_set :host, ENV['HOSTNAME']
   safe_set :secure, to_bool(ENV['SECURE'] || true)
@@ -25,6 +51,8 @@ def main
   safe_set :publish_urls, JSON.parse(ENV['PUBLISH_URLS'])
   safe_set :publish_secret, ENV['PUBLISH_SECRET']
 
+  server_state = ServerState.new
+
   if settings.secure
     before do
       require_https
@@ -32,7 +60,10 @@ def main
   end
 
   get '/' do
-    'hello from site-builder'
+    [ "<h1>eums-site-builder</h1>",
+      "<h2>Status</h2>",
+      "<p>#{server_state.state}</p><p>#{server_state.extra_info}</p>",
+    ].join("")
   end
 
   post '/publish' do
