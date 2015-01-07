@@ -133,13 +133,13 @@ def main
         }
 
         build_action(:verifying) { verify(params) }
-        build_action(:cloning)   { clone(params) }
+        build_action(:cloning)   { clone_repo(params) }
         build_action(:building)  { build(params) }
         build_action(:uploading) { publish(params) }
 
         GlobalState.last_build.success
       ensure
-        GlobalState.state = :idle
+        GlobalState.set_state(:idle)
       end
     end
 
@@ -151,7 +151,7 @@ def main
       GlobalState.set_state(state)
       yield
     rescue => e
-      GlobalState.last_build.fail(e)
+      GlobalState.last_build.fail(e.to_s + "\n" + e.backtrace.join("\n"))
       GlobalState.set_state(:idle)
       puts "Build failed: #{e}"
       fail e
@@ -221,7 +221,7 @@ def verify(params)
   end
 end
 
-def clone(params)
+def clone_repo(params)
   if !Dir.exists?(params[:source])
     `git clone #{params[:url]} #{params[:source]}`
   end
@@ -237,6 +237,7 @@ def build(params)
     Jekyll.configuration(
       "source" => params[:source],
       "destination" => params[:destination]))
+
   site.process
 
   set_modes(params[:destination])
