@@ -248,7 +248,9 @@ end
 # Set the mode of all files in a directory to 0644, and all directories in it
 # to 0755.
 def set_modes(dir)
-  Dir.glob("#{dir}/**/*").each do |path|
+  Dir.glob("#{dir}/**/*", File::FNM_DOTMATCH).each do |path|
+    next if File.basename(path) == '.'
+
     if File.directory? path
       File.chmod(0755, path)
     else
