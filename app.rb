@@ -16,31 +16,75 @@ Dotenv.load
 # * Use authenticated web hooks
 # * Use whitelisted github orgs/users
 
-class State
-  attr_reader(:state, :extra_info)
+class ServerState
+  VALID_STATES = [:idle, :preparing, :cloning, :building, :uploading]
 
-  private
-  def self.state(name)
-    define_method name do |extra_info|
-      @state = name
-      @extra_info = extra_info
+  attr_accessor(:last_build, :state)
+  private :state=
+
+  def set_state(s)
+    if VALID_STATES.include? s
+      self.state = s
+    else
+      raise "invalid state: #{s}"
     end
   end
-
-  def self.states(*names)
-    names.each do |name|
-      state(name)
-    end
-  end
-end
-
-class ServerState < State
-  states(:idle, :cloning, :building, :uploading)
 
   def initialize
-    idle(nil)
+    set_state(:idle)
   end
 end
+
+class Build < Struct.new(:start_time, :end_time, :succeeded, :message)
+  def initialize
+    self.start_time = Time.now
+  end
+
+  def success
+    self.succeeded = true
+    self.end_time = Time.now
+  end
+
+  def fail(message)
+    self.succeeded = false
+    self.message = message
+    self.end_time = Time.now
+  end
+
+  def finished?
+    !self.end_time.nil?
+  end
+
+  def succeeded?
+    finished? && self.succeeded
+  end
+
+  def failed?
+    !self.succeeded?
+  end
+
+  def summary
+    values = [['Started at', self.start_time]]
+
+    if self.finished?
+      values << ['Finished at', self.end_time]
+      values << ['Result', self.succeeded ? 'Success' : 'Failure']
+    end
+
+    if self.failed?
+      values << ['Failure reason', self.message]
+    end
+
+    values
+  end
+
+  def to_html
+    text = summary.map {|k, v| "#{k}: #{v}" }.join("\n")
+    "<pre>#{text}</pre>"
+  end
+end
+
+GlobalState = ServerState.new
 
 def main
   safe_set :host, ENV['HOSTNAME']
@@ -51,8 +95,6 @@ def main
   safe_set :publish_urls, JSON.parse(ENV['PUBLISH_URLS'])
   safe_set :publish_secret, ENV['PUBLISH_SECRET']
 
-  server_state = ServerState.new
-
   if settings.secure
     before do
       require_https
@@ -60,23 +102,57 @@ def main
   end
 
   get '/' do
-    [ "<h1>eums-site-builder</h1>",
-      "<h2>Status</h2>",
-      "<p>#{server_state.state}</p><p>#{server_state.extra_info}</p>",
-    ].join("")
+    values = [ "<h1>eums-site-builder</h1>",
+               "<h2>Status</h2>",
+               "<p>#{GlobalState.state}</p>"
+             ]
+
+    if GlobalState.last_build.is_a? Build
+      values << "<h2>Last build</h2>"
+      values << GlobalState.last_build.to_html
+    end
+
+    values.join("")
   end
 
   post '/publish' do
-    body = request.body.read
-    check_signature(body)
-    data = parse_data(body)
-    params = make_params(data)
+    already_in_progress =
+      [ 403, {}, "A build is already in progress. Please try again later.\n" ]
+    return already_in_progress if GlobalState.state != :idle
 
-    verify(params)
-    build(params)
-    publish(params)
+    GlobalState.last_build = Build.new
 
-    "Published!\n"
+    Thread.new do
+      body = request.body.read
+
+      params = build_action(:preparing) {
+        check_signature(body)
+        data = parse_data(body)
+        make_params(data)
+      }
+
+      build_action(:verifying) { verify(params) }
+      build_action(:cloning)   { clone(params) }
+      build_action(:building)  { build(params) }
+      build_action(:uploading) { publish(params) }
+
+      GlobalState.last_build.success
+    end
+
+    [ 201, {}, "Build started\n" ]
+  end
+
+  def build_action(state)
+    GlobalState.set_state(state)
+
+    begin
+      yield
+    rescue => e
+      GlobalState.last_build.fail(e)
+      GlobalState.set_state(:idle)
+      puts "Build failed: #{e}"
+      fail e
+    end
   end
 end
 
@@ -87,7 +163,7 @@ end
 
 def require_https
   if !request.secure?
-    bad_request "Please use HTTPS: https://#{settings.host}#{request.path}"
+    build_failed("Please use HTTPS: https://#{settings.host}#{request.path}")
   end
 end
 
@@ -99,7 +175,7 @@ def check_signature(body)
   signature = 'sha1=' + hmac_sha1(settings.github_secret, body)
 
   if !Rack::Utils.secure_compare(signature, received_signature)
-    bad_request 'signature mismatch'
+    build_failed('signature mismatch')
   end
 end
 
@@ -113,8 +189,7 @@ def parse_data(body)
       :url => data['repository']['url'],
     }
   rescue => e
-    puts e
-    bad_request
+    build_failed(e)
   end
 end
 
@@ -126,7 +201,7 @@ def make_params(data)
          ].join('/')
 
   publish_url = settings.publish_urls[data[:branch]] or
-    bad_request("no publishing url configured for branch #{data[:branch]}")
+    build_failed("no publishing url configured for branch #{data[:branch]}")
 
   data.merge({
     :source => "#{base}/source",
@@ -138,11 +213,11 @@ end
 
 def verify(params)
   if !settings.authorized_accounts.include?(params[:owner])
-    bad_request "bad owner: #{params[:owner]}"
+    build_failed("bad owner: #{params[:owner]}")
   end
 end
 
-def build(params)
+def clone(params)
   if !Dir.exists?(params[:source])
     `git clone #{params[:url]} #{params[:source]}`
   end
@@ -151,7 +226,9 @@ def build(params)
     `git checkout #{params[:branch]}`
     `git pull origin #{params[:branch]}`
   end
+end
 
+def build(params)
   site = Jekyll::Site.new(
     Jekyll.configuration(
       "source" => params[:source],
@@ -192,9 +269,11 @@ def publish(params)
     })
 end
 
-def bad_request(message = 'Bad request')
-  content_type 'text/plain'
-  halt 400, message + "\n"
+class BuildFailed < StandardError
+end
+
+def build_failed(message)
+  raise BuildFailed.new(message)
 end
 
 def to_bool(x)
