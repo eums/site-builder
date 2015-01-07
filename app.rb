@@ -112,7 +112,7 @@ def main
       values << GlobalState.last_build.to_html
     end
 
-    values.join("")
+    render_layout(values.join(""))
   end
 
   post '/publish' do
@@ -279,6 +279,19 @@ end
 
 def build_failed(message)
   raise BuildFailed.new(message)
+end
+
+def render_layout(str)
+  "<!doctype html>
+  <html>
+    <head>
+      <meta charset=\"utf-8\">
+      <title>site-builder</title>
+    </head>
+    <body>
+      #{str}
+    </body>
+  </html>"
 end
 
 def to_bool(x)
