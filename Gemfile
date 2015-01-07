@@ -11,4 +11,4 @@ gem 'dotenv'
 
 gem 'therubyracer'
 gem 'nokogiri'
-gem 'jekyll-asset-pipeline'
+gem 'jekyll-assets'
