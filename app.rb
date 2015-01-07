@@ -17,7 +17,7 @@ Dotenv.load
 # * Use whitelisted github orgs/users
 
 class ServerState
-  VALID_STATES = [:idle, :preparing, :cloning, :building, :uploading]
+  VALID_STATES = %i(idle preparing verifying cloning building uploading)
 
   attr_accessor(:last_build, :state)
   private :state=
@@ -35,44 +35,44 @@ class ServerState
   end
 end
 
-class Build < Struct.new(:start_time, :end_time, :succeeded, :message)
+class Build
   def initialize
-    self.start_time = Time.now
+    @start_time = Time.now
   end
 
   def success
-    self.succeeded = true
-    self.end_time = Time.now
+    @succeeded = true
+    @end_time = Time.now
   end
 
-  def fail(message)
-    self.succeeded = false
-    self.message = message
-    self.end_time = Time.now
+  def fail(m)
+    @succeeded = false
+    @fail_message = m
+    @end_time = Time.now
   end
 
   def finished?
-    !self.end_time.nil?
+    !@end_time.nil?
   end
 
   def succeeded?
-    finished? && self.succeeded
+    finished? && @succeeded
   end
 
   def failed?
-    !self.succeeded?
+    finished? && !@succeeded
   end
 
   def summary
-    values = [['Started at', self.start_time]]
+    values = [['Started at', @start_time]]
 
     if self.finished?
-      values << ['Finished at', self.end_time]
-      values << ['Result', self.succeeded ? 'Success' : 'Failure']
+      values << ['Finished at', @end_time]
+      values << ['Result', @succeeded ? 'Success' : 'Failure']
     end
 
     if self.failed?
-      values << ['Failure reason', self.message]
+      values << ['Failure reason', @fail_message]
     end
 
     values
@@ -123,29 +123,32 @@ def main
     GlobalState.last_build = Build.new
 
     Thread.new do
-      body = request.body.read
+      begin
+        body = request.body.read
 
-      params = build_action(:preparing) {
-        check_signature(body)
-        data = parse_data(body)
-        make_params(data)
-      }
+        params = build_action(:preparing) {
+          check_signature(body)
+          data = parse_data(body)
+          make_params(data)
+        }
 
-      build_action(:verifying) { verify(params) }
-      build_action(:cloning)   { clone(params) }
-      build_action(:building)  { build(params) }
-      build_action(:uploading) { publish(params) }
+        build_action(:verifying) { verify(params) }
+        build_action(:cloning)   { clone(params) }
+        build_action(:building)  { build(params) }
+        build_action(:uploading) { publish(params) }
 
-      GlobalState.last_build.success
+        GlobalState.last_build.success
+      ensure
+        GlobalState.state = :idle
+      end
     end
 
     [ 201, {}, "Build started\n" ]
   end
 
   def build_action(state)
-    GlobalState.set_state(state)
-
     begin
+      GlobalState.set_state(state)
       yield
     rescue => e
       GlobalState.last_build.fail(e)
@@ -163,7 +166,8 @@ end
 
 def require_https
   if !request.secure?
-    build_failed("Please use HTTPS: https://#{settings.host}#{request.path}")
+    content_type 'text/plain'
+    halt 400, "Please use HTTPS: https://#{settings.host}#{request.path}"
   end
 end
 
