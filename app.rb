@@ -102,7 +102,7 @@ def main
   end
 
   get '/' do
-    values = [ "<h1>eums-site-builder</h1>",
+    values = [ "<h1>site-builder</h1>",
                "<h2>Status</h2>",
                "<p>#{GlobalState.state}</p>"
              ]
