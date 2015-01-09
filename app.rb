@@ -166,8 +166,7 @@ end
 
 def require_https
   if !request.secure?
-    content_type 'text/plain'
-    halt 400, "Please use HTTPS: https://#{settings.host}#{request.path}"
+    redirect "https://#{settings.host}#{request.path}", 301
   end
 end
 
