@@ -19,7 +19,7 @@ Dotenv.load
 class ServerState
   VALID_STATES = %i(idle preparing verifying cloning building uploading)
 
-  attr_accessor(:last_build, :state)
+  attr_accessor(:last_build, :state, :last_params)
   private :state=
 
   def set_state(s)
@@ -80,7 +80,14 @@ class Build
 
   def to_html
     text = summary.map {|k, v| "#{k}: #{v}" }.join("\n")
-    "<pre>#{text}</pre>"
+    result = "<pre>#{text}</pre>"
+
+    if failed?
+      result << '<form action="/retry" method="get">'
+      result <<   '<submit type="submit" value="Retry"></submit>'
+      result << '</form>'
+
+    end
   end
 end
 
@@ -137,30 +144,18 @@ def main
       [ 403, {}, "A build is already in progress. Please try again later.\n" ]
     return already_in_progress if GlobalState.state != :idle
 
-    GlobalState.last_build = Build.new
-
-    Thread.new do
-      begin
-        body = request.body.read
-
-        params = build_action(:preparing) {
-          check_signature(body)
-          data = parse_data(body)
-          make_params(data)
-        }
-
-        build_action(:verifying) { verify(params) }
-        build_action(:cloning)   { clone_repo(params) }
-        build_action(:building)  { build(params) }
-        build_action(:uploading) { publish(params) }
-
-        GlobalState.last_build.success
-      ensure
-        GlobalState.set_state(:idle)
-      end
-    end
-
+    start_build!
     [ 201, {}, "Build started\n" ]
+  end
+
+  post '/retry' do
+    params = GlobalState.last_params
+    if params
+      start_build!(params)
+      [ 201, {}, "Build started\n" ]
+    else
+      [ 400, {}, "I don't know which build you want me to retry.\n" ]
+    end
   end
 
   def build_action(state)
@@ -172,6 +167,36 @@ def main
       GlobalState.set_state(:idle)
       puts "Build failed: #{e}"
       fail e
+    end
+  end
+
+  def start_build!(params=nil)
+    Thread.new do
+      begin
+        GlobalState.last_build = Build.new
+
+        if !params
+          body = request.body.read
+
+          params = build_action(:preparing) {
+            check_signature(body)
+            data = parse_data(body)
+            make_params(data)
+          }
+        end
+
+        GlobalState.last_params = params
+
+        build_action(:verifying) { verify(params) }
+        build_action(:cloning)   { clone_repo(params) }
+        build_action(:building)  { build(params) }
+        build_action(:uploading) { publish(params) }
+
+        GlobalState.last_build.success
+        GlobalState.last_params = nil
+      ensure
+        GlobalState.set_state(:idle)
+      end
     end
   end
 end
