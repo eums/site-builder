@@ -86,6 +86,23 @@ end
 
 GlobalState = ServerState.new
 
+class Publisher
+  include HTTParty
+
+  # Give the server five minutes before giving up
+  read_timeout 300
+
+  def self.publish(url, data, signature)
+    post(
+      url,
+      :body => data,
+      :headers => {
+        'Content-Type' => 'application/x-compressed-tar',
+        'X-Signature' => signature
+      })
+  end
+end
+
 def main
   safe_set :host, ENV['HOSTNAME']
   safe_set :secure, to_bool(ENV['SECURE'] || true)
@@ -266,15 +283,7 @@ def publish(params)
   data = File.read(params[:archive])
   signature = hmac_sha1(settings.publish_secret, data)
 
-  # Give the server three minutes to respond before giving up
-  HTTParty.read_timeout(180)
-  HTTParty.post(
-    params[:publish_url],
-    :body => data,
-    :headers => {
-      'Content-Type' => 'application/x-compressed-tar',
-      'X-Signature' => signature
-    })
+  Publisher.publish(params[:publish_url], data, signature)
 end
 
 class BuildFailed < StandardError
