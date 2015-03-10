@@ -86,8 +86,9 @@ class Build
       result << '<form action="/retry" method="get">'
       result <<   '<submit type="submit" value="Retry"></submit>'
       result << '</form>'
-
     end
+
+    result
   end
 end
 
