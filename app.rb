@@ -266,6 +266,8 @@ def publish(params)
   data = File.read(params[:archive])
   signature = hmac_sha1(settings.publish_secret, data)
 
+  # Give the server three minutes to respond before giving up
+  HTTParty.read_timeout(180)
   HTTParty.post(
     params[:publish_url],
     :body => data,
