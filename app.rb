@@ -83,8 +83,8 @@ class Build
     result = "<pre>#{text}</pre>"
 
     if failed?
-      result << '<form action="/retry" method="get">'
-      result <<   '<submit type="submit" value="Retry"></submit>'
+      result << '<form action="/retry" method="post">'
+      result <<   '<input type="submit" value="Retry"></submit>'
       result << '</form>'
     end
 
@@ -153,7 +153,7 @@ def main
     params = GlobalState.last_params
     if params
       start_build!(params)
-      [ 201, {}, "Build started\n" ]
+      redirect '/'
     else
       [ 400, {}, "I don't know which build you want me to retry.\n" ]
     end
